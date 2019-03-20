@@ -58,6 +58,8 @@ bool is_elem_in_set(const Set * set, const char * elem);
 void push(Set * set, const char * elem);
 char * pop(Set * set);
 void add_elem_sort(Set * set, const char * elem);
+void add_elem_to_mid(Set * set, Node * node, Node * current);
+void add_elem_to_tail(Set * set, Node * node, Node * current);
 Set * copy_set(const Set * set);
 Set * my_union(const Set * l, const Set * r);
 Set * my_difference(const Set * l, const Set * r);
@@ -69,6 +71,7 @@ Set * set_from_str(const char * str);
 int calc_set(const char * cmd, Set ** result);
 void calculate_sets(FILE * stream);
 int resize_str(char ** str, int * buf_size);
+bool is_operational_symbol(char c);
 
 int main(){
     calculate_sets(stdin);
