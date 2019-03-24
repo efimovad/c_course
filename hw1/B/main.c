@@ -69,12 +69,14 @@ int str_to_polish_notation(const char * cmd, char ** result_str);
 char * set_to_str(const Set * set);
 Set * set_from_str(const char * str);
 int calc_set(const char * cmd, Set ** result);
-void calculate_sets(FILE * stream);
+int calculate_sets(FILE * stream);
 int resize_str(char ** str, int * buf_size);
 bool is_operational_symbol(char c);
 
 int main(){
-    calculate_sets(stdin);
+    int err = calculate_sets(stdin);
+    if (err)
+        puts("[error]");
     return 0;
 }
 
@@ -90,6 +92,9 @@ Set * Set_new() {
 }
 
 Node * Node_new(const int len) {
+    if (len <= 0) {
+        return NULL;
+    }
     Node * node = (Node *)malloc(sizeof(Node));
     if (!node) {
         return NULL;
@@ -121,7 +126,6 @@ void set_free(Set * set) {
     if (!set) {
         return;
     }
-
     Node * current = set->head;
     while (current) {
         Node * node = current;
@@ -235,7 +239,7 @@ void add_elem_to_tail(Set * set, Node * node, Node * current) {
 
 // add elem in sorted order
 void add_elem_sort(Set * set, const char * elem) {
-    if (!set) {
+    if (!set || !elem) {
         return;
     }
     int len = strlen(elem) + 1;
@@ -362,22 +366,28 @@ void print_set(const Set * set) {
 }
 
 
-void pop_operations_to_str(Set * stack, int * n, char ** result_str) {
+int pop_operations_to_str(Set * stack, int * n, char ** result_str) {
+    if (!n || !stack || !result_str) {
+        return 1;
+    }
     char * chr_pop = pop(stack);
     while (chr_pop && chr_pop[0] != '(') {
-        (*result_str)[*n] = chr_pop[0];
-        (*n)++;
+        (*result_str)[(*n)++] = chr_pop[0];
         free(chr_pop);
         chr_pop = pop(stack);
     }
     if (chr_pop) {
         free(chr_pop);
     }
+    return 0;
 }
 
 
 char * char_to_str(char c) {
     char * str = (char *)calloc(2, sizeof(char));
+    if (!str) {
+        return NULL;
+    }
     str[0] = c;
     return str;
 }
@@ -390,8 +400,11 @@ bool is_operational_symbol(char c) {
 }
 
 int pop_stack_write_to_str(Set * stack, char ** result_str, int * n) {
+    if (!n || !result_str || !(*result_str) || !stack) {
+        return 1;
+    }
     char * chr_pop = pop(stack);
-    if (!chr_pop || !n || !(*result_str)) {
+    if (!chr_pop) {
         return 1;
     }
     (*result_str)[(*n)++] = chr_pop[0];
@@ -399,7 +412,40 @@ int pop_stack_write_to_str(Set * stack, char ** result_str, int * n) {
     return 0;
 }
 
+int chr_by_chr_to_polish_notation(char cmd, char * last_op, Set * stack, char ** result_str, int * n) {
+    int err = 0;
+    if (!cmd || !stack || !result_str || !n || !last_op) {
+        err = 1;
+        return err;
+    }
+
+    char * chr_push = char_to_str(cmd);
+    if (!chr_push) {
+        err = 1;
+        return err;
+    }
+    if (is_operational_symbol(cmd) || cmd == '(') {
+        if (!(cmd == INTERSECTION && *last_op != INTERSECTION) 
+            && *last_op != '(' 
+            && stack->length) {
+            err = pop_stack_write_to_str(stack, result_str, n); 
+        }
+        push(stack, chr_push);
+        *last_op = chr_push[0];
+    } else if (cmd == ')') {
+        err = pop_operations_to_str(stack, n, result_str);
+    } else if (cmd != '\n') {
+        (*result_str)[(*n)++] = cmd;
+    }
+    free(chr_push);
+    return err;
+}
+
+
 int str_to_polish_notation(const char * cmd, char ** result_str) {
+    if (!result_str || !cmd) {
+        return 1;
+    }
     Set * stack = Set_new();
     if (!stack) {
         return 1;
@@ -414,53 +460,25 @@ int str_to_polish_notation(const char * cmd, char ** result_str) {
     int n = 0;
     int inside_quotes = 0;
     int inside_parentheses = 0;
-    char * chr_push = NULL;
     char last_op = 0;
-
-    for (int i = 0; i < len; i++) {
-        chr_push = char_to_str(cmd[i]);
-        if (!chr_push) {
-            err = 1;
-            break;
-        }
-        if (is_operational_symbol(cmd[i]) || cmd[i] == '(') {
-            if (!(cmd[i] == INTERSECTION && last_op != INTERSECTION) 
-                && last_op != '(' 
-                && stack->length)
-                err = pop_stack_write_to_str(stack, result_str, &n); 
-                if (err)
-                    break;
-            if (cmd[i] == '(')
-                inside_parentheses++; 
-            push(stack, chr_push);
-            last_op = chr_push[0];
+    for (int i = 0; i < len && !err; i++) {
+        if (cmd[i] == '(') {
+            inside_parentheses++; 
         } else if (cmd[i] == ')') {
-            pop_operations_to_str(stack, &n, result_str);
             inside_parentheses--;
-        } else if (cmd[i] != '\n') {
-            if (cmd[i] == '\"') {
-                inside_quotes = !inside_quotes;
-            }
-            if ((cmd[i] == ' ') && (inside_quotes == 0)) {
-                err = 1;
-            }
-            (*result_str)[n++] = cmd[i];
-        }
-        if (chr_push) {
-            free(chr_push);
-            chr_push = NULL;
-        }
-    }
-    if (inside_parentheses) err = 1;
-    while (stack->length && !err) {
-        if (pop_stack_write_to_str(stack, result_str, &n)) {
+        } else if (cmd[i] == '\"') {
+            inside_quotes = !inside_quotes;
+        } else if ((cmd[i] == ' ') && (inside_quotes == 0)) {
             err = 1;
-            break;
         }
+        if (chr_by_chr_to_polish_notation(cmd[i], &last_op, stack, result_str, &n))
+            err = 1;
     }
-    if (err) {
-        if (chr_push)
-            free(chr_push);
+    if (inside_parentheses)
+        err = 1;
+    while (!err && stack->length) {
+        if (pop_stack_write_to_str(stack, result_str, &n))
+            err = 1;
     }
     set_free(stack);
     return err;
@@ -510,11 +528,13 @@ char * set_to_str(const Set * set) {
 
 
 Set * set_from_str(const char * str) {
-    Set * set = Set_new();
-    if (!str || !set) {
+    if (!str) {
         return NULL;
     }
-
+    Set * set = Set_new();
+    if (!set) {
+        return NULL;
+    }
     if (!strcmp(str, "[]")) {
         return set;
     }
@@ -561,6 +581,9 @@ Set * set_from_str(const char * str) {
 }
 
 int resize_str(char ** str, int * buf_size) {
+    if (!str || !(*str) || !buf_size) {
+        return 1;
+    }
     (*buf_size) *= BUFF_INC_COEF;
     char * tmp = (char *)realloc(*str, sizeof(char) * (*buf_size));
     if (tmp) {
@@ -570,10 +593,56 @@ int resize_str(char ** str, int * buf_size) {
     return 1;
 }
 
-int calc_set(const char * cmd, Set ** result) {
-    if (!cmd) {
-        return 1;
+Set * calculate_set_by_command(char cmd, Set * stack, Set * left_op, Set ** right_op) {    
+    if (!left_op || !stack) {
+        return NULL;
     }
+    Set * result;
+    if (!(*right_op)) {
+        char * prev_res = pop(stack);
+        *right_op = set_from_str(prev_res);
+        free(prev_res);
+    }
+    switch (cmd) {
+        case UNION:
+            result = my_union(left_op, *right_op);
+            break;
+        case DIFFERENCE:
+            result = my_difference(left_op, *right_op);
+            break;
+        case INTERSECTION:
+            result = my_intersection(left_op, *right_op);
+            break;
+    }
+    return result;
+}
+
+int get_operand(char * set, Set ** stack, Set ** left_op, Set ** right_op) {
+    int err = 0;
+    if (!(*left_op)) {
+        *left_op = set_from_str(set);
+    } else if (!(*right_op)) {
+        *right_op = set_from_str(set);
+    } else if (*left_op && *right_op) {
+        char * result_str = set_to_str(*left_op);
+        if (!result_str) {
+            err = 1;
+            set_free(*left_op);
+            return err;
+        }
+        push(*stack, result_str);
+        free(result_str);
+        set_free(*left_op);
+
+        *left_op = *right_op;
+        *right_op = set_from_str(set);          
+    }
+    return err;
+}
+
+int calc_set(const char * cmd, Set ** result) {
+    if (!cmd || !result)
+        return 1;
 
     int buf_size = INIT_BUF_SIZE;
     Set * left_op = NULL;
@@ -583,7 +652,6 @@ int calc_set(const char * cmd, Set ** result) {
     if (!stack) {
         return 1;
     }
-
     char * set = (char *)calloc(buf_size, sizeof(char));
     if (!set) {
         set_free(stack);
@@ -592,19 +660,17 @@ int calc_set(const char * cmd, Set ** result) {
 
     int err = 0;
     int len = strlen(cmd);
-
     for (int i = 0; i < len; i++) {
+        if (err)
+            break;
         if (cmd[i] == '[') {
             int n = 0;
             memset(set, 0, sizeof(char) * buf_size);
-
-            while (cmd[i] != ']') {
+            while (cmd[i] != ']' && n < len) {
                 if (n >= buf_size - CHAR_NUM_CALC_SET) {
-                    err = resize_str(&set, &buf_size);
-                    if (err) {
-                        free(set);
-                        set_free(left_op);
-                        goto mem_free;
+                    if (resize_str(&set, &buf_size)) {
+                        err = 1;
+                        break;
                     }
                 }
                 set[n++] = cmd[i++];
@@ -612,52 +678,27 @@ int calc_set(const char * cmd, Set ** result) {
             set[n++] = ']';
             set[n] = 0;
 
-            if (!left_op) {
-                left_op = set_from_str(set);
-            } else if (!right_op) {
-                right_op = set_from_str(set);
-            } else if (left_op && right_op) {
-                char * result_str = set_to_str(left_op);
-                if (!result_str) {
-                    err = 1;
-                    set_free(left_op);
-                    goto mem_free;
-                }
-                push(stack, result_str);
-                free(result_str);
-                set_free(left_op);
-
-                left_op = right_op;
-                right_op = set_from_str(set);          
+            if (get_operand(set, &stack, &left_op, &right_op)) {
+                err = 1;
+                break;
             }
-        } else if (is_operational_symbol(cmd[i])) {
-            if (left_op) {
-                if (!right_op) {
-                    char * prev_res = pop(stack);
-                    right_op = set_from_str(prev_res);
-                    free(prev_res);
-                }
-                switch (cmd[i]) {
-                    case UNION:
-                        temp_result = my_union(left_op,right_op);
-                        break;
-                    case DIFFERENCE:
-                        temp_result = my_difference(left_op,right_op);
-                        break;
-                    case INTERSECTION:
-                        temp_result = my_intersection(left_op,right_op);
-                        break;
-                }
-                set_free(left_op);
-                set_free(right_op);
-                left_op = temp_result;
-                temp_result = right_op = NULL;
-            }
+        } else if (is_operational_symbol(cmd[i]) && left_op) {
+            temp_result = calculate_set_by_command(cmd[i], stack, left_op, &right_op);
+            set_free(left_op);
+            set_free(right_op);
+            left_op = temp_result;
+            temp_result = right_op = NULL;
         }
     }
-    *result = left_op;
-mem_free:
-    free(set);
+    if (!err) {
+        *result = left_op;
+    } else {
+        set_free(left_op);
+        *result = NULL;
+    }
+
+    if (set)
+        free(set);
     set_free(right_op);
     set_free(stack);
     set_free(temp_result);
@@ -665,30 +706,42 @@ mem_free:
 }
 
 
-void calculate_sets(FILE * stream) {
+int calculate_sets(FILE * stream) {
+    if (!stream) {
+        return 1;
+    }
+
     char * cmd = NULL;
     size_t i = 0;
-    if (getline(&cmd, &i, stream)) {
-        char * not = NULL;
-        int err = str_to_polish_notation(cmd, &not);
-        if (err) {
-            puts("[error]");
-            goto mem_free;
-        }
-
-        Set * set = NULL;
-        err = calc_set(not, &set);
-        if (err) {
-            puts("[error]");
-            goto mem_free;
-        }
-        print_set(set);
-        set_free(set);
-mem_free:
-        if (not) {
-            free(not);
-        }
-        free(cmd);
+    if (!getline(&cmd, &i, stream)) {
+        return 1;
     }
+
+    char * not = NULL;
+    int err = str_to_polish_notation(cmd, &not);
+    if (err) {
+        if (not)
+            free(not);
+        free(cmd);
+        return 1;
+    }
+
+    Set * set = NULL;
+    err = calc_set(not, &set);
+    if (err) {
+        set_free(set);
+        if (not)
+            free(not);
+        free(cmd);
+        return 1;
+    }
+
+    print_set(set);
+    set_free(set);
+    if (not) {
+        free(not);
+    }
+    free(cmd);
+    return 0;
 }
 
