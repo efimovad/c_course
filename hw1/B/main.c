@@ -50,6 +50,11 @@ typedef struct set_t {
     int length;
 } Set;
 
+enum Status {
+    OK = 0,
+    ERROR = 1
+};
+
 Set * Set_new();
 Node * Node_new(const int len);
 void node_free(Node * node);
@@ -77,7 +82,7 @@ int main(){
     int err = calculate_sets(stdin);
     if (err)
         puts("[error]");
-    return 0;
+    return OK;
 }
 
 Set * Set_new() {
@@ -368,7 +373,7 @@ void print_set(const Set * set) {
 
 int pop_operations_to_str(Set * stack, int * n, char ** result_str) {
     if (!n || !stack || !result_str) {
-        return 1;
+        return ERROR;
     }
     char * chr_pop = pop(stack);
     while (chr_pop && chr_pop[0] != '(') {
@@ -379,7 +384,7 @@ int pop_operations_to_str(Set * stack, int * n, char ** result_str) {
     if (chr_pop) {
         free(chr_pop);
     }
-    return 0;
+    return OK;
 }
 
 
@@ -401,28 +406,26 @@ bool is_operational_symbol(char c) {
 
 int pop_stack_write_to_str(Set * stack, char ** result_str, int * n) {
     if (!n || !result_str || !(*result_str) || !stack) {
-        return 1;
+        return ERROR;
     }
     char * chr_pop = pop(stack);
     if (!chr_pop) {
-        return 1;
+        return ERROR;
     }
     (*result_str)[(*n)++] = chr_pop[0];
     free(chr_pop);
-    return 0;
+    return OK;
 }
 
 int chr_by_chr_to_polish_notation(char cmd, char * last_op, Set * stack, char ** result_str, int * n) {
-    int err = 0;
+    int err = OK;
     if (!cmd || !stack || !result_str || !n || !last_op) {
-        err = 1;
-        return err;
+        return ERROR;
     }
 
     char * chr_push = char_to_str(cmd);
     if (!chr_push) {
-        err = 1;
-        return err;
+        return ERROR;
     }
     if (is_operational_symbol(cmd) || cmd == '(') {
         if (!(cmd == INTERSECTION && *last_op != INTERSECTION) 
@@ -444,19 +447,19 @@ int chr_by_chr_to_polish_notation(char cmd, char * last_op, Set * stack, char **
 
 int str_to_polish_notation(const char * cmd, char ** result_str) {
     if (!result_str || !cmd) {
-        return 1;
+        return ERROR;
     }
     Set * stack = Set_new();
     if (!stack) {
-        return 1;
+        return ERROR;
     }
     int len = strlen(cmd);
     * result_str = (char *)calloc((len + 1), sizeof(char));
     if (!(* result_str)) {
         set_free(stack);
-        return 1;
+        return ERROR;
     }
-    int err = 0;
+    int err = OK;
     int n = 0;
     int inside_quotes = 0;
     int inside_parentheses = 0;
@@ -582,15 +585,15 @@ Set * set_from_str(const char * str) {
 
 int resize_str(char ** str, int * buf_size) {
     if (!str || !(*str) || !buf_size) {
-        return 1;
+        return ERROR;
     }
     (*buf_size) *= BUFF_INC_COEF;
     char * tmp = (char *)realloc(*str, sizeof(char) * (*buf_size));
     if (tmp) {
         (*str) = tmp;
-        return 0;
+        return OK;
     }
-    return 1;
+    return ERROR;
 }
 
 Set * calculate_set_by_command(char cmd, Set * stack, Set * left_op, Set ** right_op) {    
@@ -618,7 +621,7 @@ Set * calculate_set_by_command(char cmd, Set * stack, Set * left_op, Set ** righ
 }
 
 int get_operand(char * set, Set ** stack, Set ** left_op, Set ** right_op) {
-    int err = 0;
+    int err = OK;
     if (!(*left_op)) {
         *left_op = set_from_str(set);
     } else if (!(*right_op)) {
@@ -626,7 +629,7 @@ int get_operand(char * set, Set ** stack, Set ** left_op, Set ** right_op) {
     } else if (*left_op && *right_op) {
         char * result_str = set_to_str(*left_op);
         if (!result_str) {
-            err = 1;
+            err = ERROR;
             set_free(*left_op);
             return err;
         }
@@ -642,7 +645,7 @@ int get_operand(char * set, Set ** stack, Set ** left_op, Set ** right_op) {
 
 int calc_set(const char * cmd, Set ** result) {
     if (!cmd || !result)
-        return 1;
+        return ERROR;
 
     int buf_size = INIT_BUF_SIZE;
     Set * left_op = NULL;
@@ -650,15 +653,15 @@ int calc_set(const char * cmd, Set ** result) {
     Set * temp_result = NULL;
     Set * stack = Set_new(); // stack - temp_result storage
     if (!stack) {
-        return 1;
+        return ERROR;
     }
     char * set = (char *)calloc(buf_size, sizeof(char));
     if (!set) {
         set_free(stack);
-        return 1;
+        return ERROR;
     }
 
-    int err = 0;
+    int err = OK;
     int len = strlen(cmd);
     for (int i = 0; i < len; i++) {
         if (err)
@@ -679,7 +682,7 @@ int calc_set(const char * cmd, Set ** result) {
             set[n] = 0;
 
             if (get_operand(set, &stack, &left_op, &right_op)) {
-                err = 1;
+                err = ERROR;
                 break;
             }
         } else if (is_operational_symbol(cmd[i]) && left_op) {
@@ -708,13 +711,13 @@ int calc_set(const char * cmd, Set ** result) {
 
 int calculate_sets(FILE * stream) {
     if (!stream) {
-        return 1;
+        return ERROR;
     }
 
     char * cmd = NULL;
     size_t i = 0;
     if (!getline(&cmd, &i, stream)) {
-        return 1;
+        return ERROR;
     }
 
     char * not = NULL;
@@ -723,7 +726,7 @@ int calculate_sets(FILE * stream) {
         if (not)
             free(not);
         free(cmd);
-        return 1;
+        return ERROR;
     }
 
     Set * set = NULL;
@@ -733,7 +736,7 @@ int calculate_sets(FILE * stream) {
         if (not)
             free(not);
         free(cmd);
-        return 1;
+        return ERROR;
     }
 
     print_set(set);
@@ -742,6 +745,6 @@ int calculate_sets(FILE * stream) {
         free(not);
     }
     free(cmd);
-    return 0;
+    return OK;
 }
 
